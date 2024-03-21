@@ -4,8 +4,8 @@ This Node.js API application provides endpoints to manage a collection of books 
 
 ## Features
 
-- **GET /api/books**: Retrieves all books from the database in a paginated fashion. If available, data is fetched from the Redis cache. Pagination parameters (`page` and `limit`) can be provided as query parameters in the URL.
-- **POST /api/books**: Adds one or more books to the database.
+- **GET /books**: Retrieves all books from the database in a paginated fashion. If available, data is fetched from the Redis cache. Pagination parameters (`page` and `limit`) can be provided as query parameters in the URL.
+- **POST /books-add**: Adds one or more books to the database.
 
 ## Technologies Used
 
