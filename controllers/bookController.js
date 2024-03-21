@@ -1,56 +1,63 @@
+const { validationResult } = require('express-validator');
 const Book = require('../models/bookModel');
-const redis = require('redis');
+const redisClient = require('../config/redisConfig')
 
-// Create Redis client
-const redisClient = redis.createClient();
+async function cacheBooks(req, res, next) {
+  try {
+    console.log('Checking cache for books...');
+    redisClient.get('books', async (err, cachedBooks) => {
+      if (err) {
+        console.error('Redis error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+      }
 
-// Handle Redis errors
-redisClient.on('error', err => {
-  console.error('Redis error:', err);
-});
+      if (cachedBooks) {
+        console.log('Data fetched from Redis.');
+        req.books = JSON.parse(cachedBooks);
+        return next(); // Move to the next middleware or route handler
+      } else {
+        try {
+          console.log('Fetching data from MongoDB...');
+          const page = parseInt(req.query.page) || 1;
+          const limit = parseInt(req.query.limit) || 6;
+          const offset = (page - 1) * limit;
+
+          const books = await Book.find()
+            .skip(offset)
+            .limit(limit)
+            .exec();
+
+          console.log('Caching data in Redis...');
+          // Use the set method with the EX option to set a key with an expiration time
+          await redisClient.set('books', JSON.stringify(books), 'EX', 1800); // 1800 seconds = 30 minutes
+          console.log('Data cached in Redis.');
+
+          req.books = books;
+          return next(); // Move to the next middleware or route handler
+        } catch (error) {
+          console.error('Error fetching data from MongoDB:', error);
+          return res.status(500).json({ message: 'Error fetching data from MongoDB' });
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Error checking cache:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
 
 async function getAllBooks(req, res) {
-    try {
-      const page = parseInt(req.query.page) || 1; // default to page 1 if not provided
-      const limit = parseInt(req.query.limit) || 6; // default limit to 6 if not provided
-  
-      // Calculate the offset to skip the correct number of documents
-      const offset = (page - 1) * limit;
-  
-      // Check if Redis client is connected
-      if (redisClient.connected) {
-        // Check if data is cached in Redis
-        redisClient.get(`books:page:${page}`, async (err, data) => {
-          if (err) throw err;
-  
-          if (data) {
-            res.status(200).json(JSON.parse(data));
-          } else {
-            // If data not found in Redis, fetch from MongoDB with pagination
-            const books = await Book.find()
-              .skip(offset)
-              .limit(limit)
-              .exec();
-  
-            // Cache data in Redis for 30 minutes
-            redisClient.setex(`books:page:${page}`, 1800, JSON.stringify(books));
-  
-            res.status(200).json(books);
-          }
-        });
-      } else {
-        // If Redis client is not connected, fetch from MongoDB with pagination
-        const books = await Book.find()
-          .skip(offset)
-          .limit(limit)
-          .exec();
-        res.status(200).json(books);
-      }
-    } catch (err) {
-      res.status(500).json({ message: err.message });
+  try {
+    if (req.books) {
+      return res.status(200).json(req.books);
     }
+    return res.status(200).json([]); // Return an empty array if books are not found
+  } catch (err) {
+    console.error('Error fetching books:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
-  
+}
 
 async function addBook(req, res) {
     const booksToAdd = req.body;
@@ -95,5 +102,6 @@ async function addBook(req, res) {
 
 module.exports = {
   getAllBooks,
-  addBook
+  addBook,
+  cacheBooks
 };

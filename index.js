@@ -1,5 +1,5 @@
 const express = require('express');
-const redis = require('redis');
+const redisClient = require('./config/redisConfig');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const bookRoutes = require("./routes/bookRoutes");
@@ -10,9 +10,6 @@ require("dotenv").config();
 const app = express();
 
 
-// Redis client
-const redisClient = redis.createClient();
-
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -22,13 +19,14 @@ app.get('/', (req, res) => {
 
 app.use('/', bookRoutes);
 
-const PORT = process.env.PORT;
-app.listen(PORT, async (req, res) => {
-    try {
-        await connection
-        console.log("connected to MongoDB");
-    } catch (error) {
-        console.error(error);
-    }
-    console.log(`Listening on ${PORT}`);
-})
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
+  try {
+    await connection;
+    console.log("Connected to MongoDB");
+  } catch (error) {
+    console.error("Error:", error.message);
+    process.exit(1);
+  }
+  console.log(`Listening on port ${PORT}`);
+});
