@@ -1,11 +1,15 @@
 const { validationResult } = require('express-validator');
 const Book = require('../models/bookModel');
-const redisClient = require('../config/redisConfig')
+const redisClient = require('../config/redisConfig');
 
 async function cacheBooks(req, res, next) {
   try {
     console.log('Checking cache for books...');
-    redisClient.get('books', async (err, cachedBooks) => {
+    
+    // Construct a unique cache key based on pagination parameters
+    const cacheKey = `books:page=${req.query.page || 1}:limit=${req.query.limit || 6}`;
+
+    redisClient.get(cacheKey, async (err, cachedBooks) => {
       if (err) {
         console.error('Redis error:', err);
         return res.status(500).json({ message: 'Internal server error' });
@@ -29,7 +33,7 @@ async function cacheBooks(req, res, next) {
 
           console.log('Caching data in Redis...');
           // Use the set method with the EX option to set a key with an expiration time
-          await redisClient.set('books', JSON.stringify(books), 'EX', 1800); // 1800 seconds = 30 minutes
+          await redisClient.setex(cacheKey, 1800, JSON.stringify(books)); // 1800 seconds = 30 minutes
           console.log('Data cached in Redis.');
 
           req.books = books;
@@ -60,45 +64,44 @@ async function getAllBooks(req, res) {
 }
 
 async function addBook(req, res) {
-    const booksToAdd = req.body;
-  
-    // Check if the request body is an array
-    if (!Array.isArray(booksToAdd)) {
-      return res.status(400).json({ message: 'Please provide an array of books' });
-    }
-  
-    const insertedBooks = [];
-  
-    // Iterate through each book in the array
-    for (const bookData of booksToAdd) {
-      const { title, author, genre } = bookData;
-  
-      // Validate if the required fields are present
-      if (!title || !author || !genre) {
-        return res.status(400).json({ message: 'Please provide title, author, and genre for each book' });
-      }
-  
-      const newBook = new Book({
-        title,
-        author,
-        genre
-        // Add more fields as necessary
-      });
-  
-      try {
-        // Save each book to the database
-        const savedBook = await newBook.save();
-        insertedBooks.push(savedBook);
-      } catch (err) {
-        // If any error occurs, return a 500 status with an error message
-        return res.status(500).json({ message: err.message });
-      }
-    }
-  
-    // Return the array of inserted books
-    res.status(201).json(insertedBooks);
+  const booksToAdd = req.body;
+
+  // Check if the request body is an array
+  if (!Array.isArray(booksToAdd)) {
+    return res.status(400).json({ message: 'Please provide an array of books' });
   }
-  
+
+  const insertedBooks = [];
+
+  // Iterate through each book in the array
+  for (const bookData of booksToAdd) {
+    const { title, author, genre } = bookData;
+
+    // Validate if the required fields are present
+    if (!title || !author || !genre) {
+      return res.status(400).json({ message: 'Please provide title, author, and genre for each book' });
+    }
+
+    const newBook = new Book({
+      title,
+      author,
+      genre
+      // Add more fields as necessary
+    });
+
+    try {
+      // Save each book to the database
+      const savedBook = await newBook.save();
+      insertedBooks.push(savedBook);
+    } catch (err) {
+      // If any error occurs, return a 500 status with an error message
+      return res.status(500).json({ message: err.message });
+    }
+  }
+
+  // Return the array of inserted books
+  res.status(201).json(insertedBooks);
+}
 
 module.exports = {
   getAllBooks,
